@@ -1,9 +1,15 @@
 # Provision WordPress Develop
 
 # Make a database, if we don't already have one
-echo -e "\nCreating database 'wordpress_develop' (if it's not already there)"
-mysql -u root --password=root -e "CREATE DATABASE IF NOT EXISTS wordpress_develop"
-mysql -u root --password=root -e "GRANT ALL PRIVILEGES ON wordpress_develop.* TO wp@localhost IDENTIFIED BY 'wp';"
+echo -e "\nCreating database 'wordpress_commit' (if it's not already there)"
+mysql -u root --password=root -e "CREATE DATABASE IF NOT EXISTS wordpress_commit"
+mysql -u root --password=root -e "GRANT ALL PRIVILEGES ON wordpress_commit.* TO wp@localhost IDENTIFIED BY 'wp';"
+echo -e "\n DB operations done.\n\n"
+
+# Make a database, if we don't already have one
+echo -e "\nCreating database 'wpcommit_unit_tests' (if it's not already there)"
+mysql -u root --password=root -e "CREATE DATABASE IF NOT EXISTS wpcommit_unit_tests"
+mysql -u root --password=root -e "GRANT ALL PRIVILEGES ON wpcommit_unit_tests.* TO wp@localhost IDENTIFIED BY 'wp';"
 echo -e "\n DB operations done.\n\n"
 
 # Nginx Logs
@@ -16,43 +22,43 @@ touch ${VVV_PATH_TO_SITE}/log/build.access.log
 # Checkout, install and configure WordPress trunk via develop.svn
 if [[ ! -d "${VVV_PATH_TO_SITE}/public_html" ]]; then
   echo "Checking out WordPress trunk. See https://develop.svn.wordpress.org/trunk"
-  noroot svn checkout "https://develop.svn.wordpress.org/trunk/" "/tmp/wordpress-develop"
+  noroot svn checkout "https://develop.svn.wordpress.org/trunk/" "/tmp/wordpress-commit"
 
-  cd /tmp/wordpress-develop/src/
+  cd /tmp/wordpress-commit/src/
 
-  echo "Installing local npm packages for src.wordpress-develop.test, this may take several minutes."
-  noroot npm install --no-bin-links
+  echo "Installing local npm packages for src.wordpress-commit.test, this may take several minutes."
+  noroot npm install
 
-  echo "Initializing grunt and creating build.wordpress-develop.test, this may take several minutes."
+  echo "Initializing grunt and creating build.wordpress-commit.test, this may take several minutes."
   noroot grunt
 
-  echo "Moving WordPress develop to a shared directory, ${VVV_PATH_TO_SITE}/public_html"
-  mv /tmp/wordpress-develop ${VVV_PATH_TO_SITE}/public_html
+  echo "Moving WordPress commit to a shared directory, ${VVV_PATH_TO_SITE}/public_html"
+  mv /tmp/wordpress-commit ${VVV_PATH_TO_SITE}/public_html
 
   cd ${VVV_PATH_TO_SITE}/public_html/src/
-  echo "Creating wp-config.php for src.wordpress-develop.test and build.wordpress-develop.test."
-  noroot wp core config --dbname=wordpress_develop --dbuser=wp --dbpass=wp --quiet --extra-php <<PHP
+  echo "Creating wp-config.php for src.wordpress-commit.test and build.wordpress-commit.test."
+  noroot wp core config --dbname=wordpress_commit --dbuser=wp --dbpass=wp --quiet --extra-php <<PHP
 // Match any requests made via xip.io.
-if ( isset( \$_SERVER['HTTP_HOST'] ) && preg_match('/^(src|build)(.wordpress-develop.)\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(.xip.io)\z/', \$_SERVER['HTTP_HOST'] ) ) {
+if ( isset( \$_SERVER['HTTP_HOST'] ) && preg_match('/^(src|build)(.wordpress-commit.)\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(.xip.io)\z/', \$_SERVER['HTTP_HOST'] ) ) {
     define( 'WP_HOME', 'http://' . \$_SERVER['HTTP_HOST'] );
     define( 'WP_SITEURL', 'http://' . \$_SERVER['HTTP_HOST'] );
 } else if ( 'build' === basename( dirname( __FILE__ ) ) ) {
-// Allow (src|build).wordpress-develop.test to share the same Database
-    define( 'WP_HOME', 'http://build.wordpress-develop.test' );
-    define( 'WP_SITEURL', 'http://build.wordpress-develop.test' );
+// Allow (src|build).wordpress-commit.test to share the same Database
+    define( 'WP_HOME', 'http://build.wordpress-commit.test' );
+    define( 'WP_SITEURL', 'http://build.wordpress-commit.test' );
 }
 
 define( 'WP_DEBUG', true );
 PHP
 
-  echo "Installing src.wordpress-develop.test."
-  noroot wp core install --url=src.wordpress-develop.test --quiet --title="WordPress Develop" --admin_name=admin --admin_email="admin@local.test" --admin_password="password"
+  echo "Installing src.wordpress-commit.test."
+  noroot wp core install --url=src.wordpress-commit.test --quiet --title="WordPress Commit" --admin_name=admin --admin_email="admin@local.test" --admin_password="password"
   cp /srv/config/wordpress-config/wp-tests-config.php ${VVV_PATH_TO_SITE}/public_html/
   cd ${VVV_PATH_TO_SITE}/public_html/
 
 else
 
-  echo "Updating WordPress develop..."
+  echo "Updating WordPress commit..."
   cd ${VVV_PATH_TO_SITE}/public_html/
   if [[ -e .svn ]]; then
     svn up
@@ -67,23 +73,11 @@ else
   fi
 
   echo "Updating npm packages..."
-  noroot npm install --no-bin-links &>/dev/null
+  noroot npm install &>/dev/null
 fi
 
 if [[ ! -d "${VVV_PATH_TO_SITE}/public_html/build" ]]; then
   echo "Initializing grunt in WordPress develop... This may take a few moments."
   cd ${VVV_PATH_TO_SITE}/public_html/
   grunt
-fi
-
-ln -sf ${VVV_PATH_TO_SITE}/bin/develop_git /home/vagrant/bin/develop_git
-
-cp -f "${VVV_PATH_TO_SITE}/provision/vvv-nginx.conf.tmpl" "${VVV_PATH_TO_SITE}/provision/vvv-nginx.conf"
-
-if [ -n "$(type -t is_utility_installed)" ] && [ "$(type -t is_utility_installed)" = function ] && `is_utility_installed core tls-ca`; then
-    sed -i "s#{{TLS_CERT}}#ssl_certificate /vagrant/certificates/${VVV_SITE_NAME}/dev.crt;#" "${VVV_PATH_TO_SITE}/provision/vvv-nginx.conf"
-    sed -i "s#{{TLS_KEY}}#ssl_certificate_key /vagrant/certificates/${VVV_SITE_NAME}/dev.key;#" "${VVV_PATH_TO_SITE}/provision/vvv-nginx.conf"
-else
-    sed -i "s#{{TLS_CERT}}##" "${VVV_PATH_TO_SITE}/provision/vvv-nginx.conf"
-    sed -i "s#{{TLS_KEY}}##" "${VVV_PATH_TO_SITE}/provision/vvv-nginx.conf"
 fi
